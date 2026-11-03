@@ -60,7 +60,7 @@ const td=()=>{const n=new Date();return n.getFullYear()+"-"+String(n.getMonth()+
 function currentSession(){const i=ses.findIndex(s=>s.date>=td());return i<0?27:Math.max(0,i)}
 let cur=currentSession();
 let tab="t",coachWeek=3,coachDay=0;
-const tabs=[["t","Today"],["c","Calendar"],["i","Inputs"],["r","Results"],["h","Coach"],["a","Account"]];
+const tabs=[["t","Today"],["c","Calendar"],["i","Inputs"],["r","Results"],["u","Resources"],["h","Coach"],["a","Account"]];
 let menuOpen=false;
 function nav(){
  const links=tabs.filter(([key])=>key!="h"||!(cloudUser&&cloudProfile?.role=="athlete"));
@@ -75,7 +75,34 @@ function nav(){
 $("#menuToggle").onclick=()=>{menuOpen=!menuOpen;nav()};
 document.addEventListener("click",event=>{if(menuOpen&&!$("#nv").contains(event.target)&&!$("#menuToggle").contains(event.target)){menuOpen=false;nav()}});
 document.addEventListener("keydown",event=>{if(event.key=="Escape"&&menuOpen){menuOpen=false;nav();$("#menuToggle").focus()}});
-function draw(){if(cloudUser&&cloudProfile?.role=="athlete"&&tab=="h")tab="t";nav();$("#tmw").style.display=tab=="t"?"":"none";window.scrollTo(0,0);({t:today,c:cal,i:inputs,r:results,h:coach,a:account})[tab]()}
+function draw(){if(cloudUser&&cloudProfile?.role=="athlete"&&tab=="h")tab="t";nav();$("#tmw").style.display=tab=="t"?"":"none";window.scrollTo(0,0);({t:today,c:cal,i:inputs,r:results,u:resources,h:coach,a:account})[tab]()}
+function resources(){
+ const groups=[
+  {title:"Double unders",description:"Build timing, relaxed wrists, and consistent rope rhythm.",items:[
+   ["Pogo jumps and single-under rhythm","double under progression pogo jumps single unders"],
+   ["Wrist-driven rope technique","double unders wrist rotation rope technique"],
+   ["Single-to-double-under progression","double under beginner progression single unders"]
+  ]},
+  {title:"Bar muscle-up foundations",description:"Practice controlled kip shapes and supported transitions before attempting full reps.",items:[
+   ["Hollow and arch kip swing","bar muscle up hollow arch kip swing drill"],
+   ["Target reach and loading-position drills","bar muscle up target reach loading position drill"],
+   ["Box-supported turnover (Wishing Well)","bar muscle up box supported wishing well turnover drill"],
+   ["Pull-up and chest-to-bar progressions","strict pull up chest to bar progression"]
+  ]},
+  {title:"Handstand balance and walking",description:"Prioritize a safe exit, stacked alignment, and small controlled shifts.",items:[
+   ["Wall-facing handstand line and toe pulls","wall facing handstand hold toe pull drill"],
+   ["Handstand weight shifts","handstand wall weight shift drill straight arms"],
+   ["Kick-up control and safe exits","handstand kick up safe cartwheel exit beginner"],
+   ["First controlled handstand steps","handstand walking beginner controlled steps drill"]
+  ]},
+  {title:"Rope climbs",description:"Learn an efficient foot lock and controlled hand-over-hand descent.",items:[
+   ["Foot-lock technique","rope climb foot lock technique tutorial"],
+   ["Clamp, stand, and reach","rope climb clamp stand reach technique"],
+   ["Controlled rope-climb descent","rope climb controlled descent hand over hand"]
+  ]}
+ ];
+ $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Movement library</div><h1>Resources</h1><p>Quick video searches for the skills and drills used in this plan. Links open YouTube results in a new tab; choose coaching that matches your level and equipment.</p></div>${groups.map(group=>`<section class="card resource-group"><div class="section-kicker">Skill guide</div><h2>${group.title}</h2><p class="helper">${group.description}</p><div class="resource-links">${group.items.map(([label,query])=>`<a href="https://www.youtube.com/results?search_query=${encodeURIComponent(query)}" target="_blank" rel="noopener noreferrer">${label}<span aria-hidden="true">↗</span></a>`).join("")}</div></section>`).join("")}`;
+}
 function workout(s){
  const base=build(s.w,s.d,S.inp),override=P[s.id];
  if(!override)return{...base,cool:COOL};

@@ -63,6 +63,12 @@ nav.open{display:grid}
 nav .menu-link{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:48px;padding:11px 13px;border:0;border-radius:11px;background:transparent;text-align:left;font-weight:650}
 nav .menu-link:hover,nav .menu-link.on{background:var(--soft);color:var(--ac-dark)}
 nav .menu-link span{font-size:13px;color:var(--ac);font-weight:800}
+.resource-group h2{margin-top:0}
+.resource-links{display:grid;gap:8px;margin-top:12px}
+.resource-links a{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:10px 12px;border:1px solid var(--ln);border-radius:12px;background:var(--bg);color:var(--tx);font-size:14px;font-weight:650;text-decoration:none}
+.resource-links a:hover{border-color:var(--ac);color:var(--ac-dark)}
+.resource-links a:focus-visible{outline:3px solid color-mix(in srgb,var(--ac),transparent 68%);outline-offset:2px}
+.resource-links a span{flex:none;color:var(--ac);font-size:17px}
 #tc{font-size:48px;font-weight:780;text-align:center;font-variant-numeric:tabular-nums;letter-spacing:-.04em;padding:8px 0}
 .sc{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 button,select,input,textarea{min-height:46px}
