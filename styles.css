@@ -39,7 +39,22 @@ input,select{width:100%;margin-top:5px}input[type=number]{font-variant-numeric:t
 .coach-block textarea{min-height:82px}
 .coach-actions{margin-top:12px}
 .coach-reset{width:100%;margin-top:10px}
-.auth-actions{margin-top:12px}
+.auth-card{padding:16px}
+.auth-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin-bottom:8px;border-radius:13px;background:var(--bg)}
+.auth-switch button{min-height:42px;padding:8px;border:0;border-radius:10px;background:transparent;color:var(--mu);font-size:14px;font-weight:650}
+.auth-switch button.selected{background:var(--card);color:var(--hd);box-shadow:0 2px 8px rgba(35,32,40,.09)}
+.auth-card form>label:first-child{margin-top:10px}
+.password-field{display:flex;align-items:stretch;gap:7px;margin-top:5px}
+.password-field input{min-width:0;margin:0}
+.password-field button{min-width:65px;padding:8px 11px;color:var(--ac-dark);font-size:13px;font-weight:700}
+.auth-signup-fields{margin-top:4px}
+.auth-signup-fields label{margin-top:11px}
+.optional{color:var(--mu);font-size:12px;font-weight:400}
+.auth-submit{margin-top:18px}
+.auth-submit:disabled{opacity:.68;cursor:wait}
+.auth-message{display:none;margin:12px 0 0;padding:10px 12px;border-radius:11px;background:var(--soft);font-size:14px;overflow-wrap:anywhere}
+.auth-message.visible{display:block}
+.auth-message.success{color:var(--hd)}
 .link-code{padding:12px;border:1px dashed var(--ac);border-radius:12px;font:700 18px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}
 .linked-heading{margin-top:20px}
 .test-entry{border-color:color-mix(in srgb,var(--ac),var(--ln) 60%);background:linear-gradient(150deg,var(--card),var(--soft))}

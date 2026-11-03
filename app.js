@@ -62,6 +62,7 @@ let cur=currentSession();
 let tab="t",coachWeek=3,coachDay=0;
 const tabs=[["t","Today"],["c","Calendar"],["i","Inputs"],["r","Results"],["u","Resources"],["h","Coach"],["a","Account"]];
 let menuOpen=false;
+let authMode="signin",authDraft={email:"",password:"",name:"",role:"athlete"};
 function nav(){
  const links=tabs.filter(([key])=>key!="h"||!(cloudUser&&cloudProfile?.role=="athlete"));
  $("#nv").innerHTML=links.map(([key,label])=>`<button class="menu-link ${tab==key?"on":""}" data-k="${key}" ${tab==key?'aria-current="page"':""}>${label}${tab==key?'<span aria-hidden="true">✓</span>':""}</button>`).join("");
@@ -176,12 +177,40 @@ function account(){
   return;
  }
  if(!cloudUser){
-  $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Account &amp; sync</div><h1>Sign in or create an account</h1><p>Coach accounts can create athlete link codes and edit shared plans. Athlete accounts can redeem a coach code and view the plan live.</p></div>
-  <div class="card"><label>Email<input id="authEmail" type="email" autocomplete="email" required></label><label>Password<input id="authPassword" type="password" autocomplete="current-password" minlength="8" required></label>
-  <div id="signupFields"><label>Display name<input id="authName" maxlength="80" autocomplete="name"></label><label>Account type<select id="authRole"><option value="athlete">Athlete</option><option value="coach">Coach</option></select></label></div>
-  <div class="sc auth-actions"><button id="signIn">Sign in</button><button id="signUp">Create account</button></div><p class="helper auth-message">${esc(cloudMessage)}</p></div>`;
-  $("#signIn").onclick=async()=>{const{error}=await cloud.auth.signInWithPassword({email:$("#authEmail").value.trim(),password:$("#authPassword").value});cloudMessage=error?error.message:"";account()};
-  $("#signUp").onclick=async()=>{const{data,error}=await cloud.auth.signUp({email:$("#authEmail").value.trim(),password:$("#authPassword").value,options:{emailRedirectTo:window.location.origin+window.location.pathname,data:{role:$("#authRole").value,display_name:$("#authName").value.trim()}}});cloudMessage=error?error.message:data.session?"Account created.":"Check your email to confirm the account, then sign in.";account()};
+  const signingUp=authMode=="signup";
+  $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Account &amp; sync</div><h1>${signingUp?"Create your account":"Welcome back"}</h1><p>${signingUp?"Create an account to connect with your coach and access your shared plan.":"Sign in to access your training plan and account."}</p></div>
+  <div class="card auth-card"><div class="auth-switch" role="group" aria-label="Account action"><button type="button" class="${signingUp?"":"selected"}" data-auth-mode="signin" aria-pressed="${!signingUp}">Sign in</button><button type="button" class="${signingUp?"selected":""}" data-auth-mode="signup" aria-pressed="${signingUp}">Create account</button></div>
+  <form id="authForm" novalidate>
+  <label>Email address<input id="authEmail" type="email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" value="${esc(authDraft.email)}" required></label>
+  <label>Password<div class="password-field"><input id="authPassword" type="password" autocomplete="${signingUp?"new-password":"current-password"}" minlength="${signingUp?8:1}" value="${esc(authDraft.password)}" required><button id="togglePassword" type="button" aria-label="Show password" aria-pressed="false">Show</button></div>${signingUp?'<small>Use at least 8 characters.</small>':""}</label>
+  ${signingUp?`<div class="auth-signup-fields"><label>Name <span class="optional">(optional)</span><input id="authName" type="text" maxlength="80" autocomplete="name" value="${esc(authDraft.name)}"></label><label>Account type<select id="authRole"><option value="athlete" ${authDraft.role=="athlete"?"selected":""}>Athlete</option><option value="coach" ${authDraft.role=="coach"?"selected":""}>Coach</option></select><small id="roleHint">${authDraft.role=="coach"?"Create and share training plans with athletes.":"Follow your training plan and connect with your coach."}</small></label></div>`:""}
+  <button class="p auth-submit" id="authSubmit" type="submit">${signingUp?"Create account":"Sign in"}</button></form>
+  <p id="authMessage" class="auth-message ${cloudMessage?"visible":""}" role="status" aria-live="polite">${esc(cloudMessage)}</p></div>`;
+  const rememberDraft=()=>{authDraft.email=$("#authEmail").value;authDraft.password=$("#authPassword").value;if($("#authName"))authDraft.name=$("#authName").value;if($("#authRole"))authDraft.role=$("#authRole").value};
+  $("#authForm").oninput=rememberDraft;
+  $("#authForm").onchange=rememberDraft;
+  $("#v").querySelectorAll("[data-auth-mode]").forEach(button=>button.onclick=()=>{rememberDraft();authMode=button.dataset.authMode;cloudMessage="";account()});
+  $("#togglePassword").onclick=()=>{const input=$("#authPassword"),shown=input.type=="text";input.type=shown?"password":"text";$("#togglePassword").textContent=shown?"Show":"Hide";$("#togglePassword").setAttribute("aria-label",shown?"Show password":"Hide password");$("#togglePassword").setAttribute("aria-pressed",String(!shown))};
+  if($("#authRole"))$("#authRole").onchange=()=>{rememberDraft();$("#roleHint").textContent=authDraft.role=="coach"?"Create and share training plans with athletes.":"Follow your training plan and connect with your coach."};
+  $("#authForm").onsubmit=async event=>{
+   event.preventDefault();rememberDraft();
+   if(!$("#authForm").reportValidity())return;
+   const submit=$("#authSubmit"),message=$("#authMessage");submit.disabled=true;submit.textContent=signingUp?"Creating account…":"Signing in…";message.textContent="";message.classList.remove("visible","success");
+   try{
+    if(signingUp){
+     const{data,error}=await cloud.auth.signUp({email:authDraft.email.trim(),password:authDraft.password,options:{emailRedirectTo:window.location.origin+window.location.pathname,data:{role:authDraft.role,display_name:authDraft.name.trim()}}});
+     if(error)throw error;
+     cloudMessage=data.session?"Account created.":"Check your email to confirm your account, then return here to sign in.";
+     if(data.session)authDraft.password="";
+    }else{
+     const{error}=await cloud.auth.signInWithPassword({email:authDraft.email.trim(),password:authDraft.password});
+     if(error)throw error;
+     cloudMessage="";authDraft.password="";$("#authPassword").value="";
+    }
+    if(cloudMessage){message.textContent=cloudMessage;message.classList.add("visible","success")}
+   }catch(error){cloudMessage=error.message||"Unable to complete your request.";message.textContent=cloudMessage;message.classList.add("visible")}
+   finally{submit.disabled=false;submit.textContent=signingUp?"Create account":"Sign in"}
+  };
   return;
  }
  if(!cloudProfile){
