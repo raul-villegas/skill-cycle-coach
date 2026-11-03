@@ -142,7 +142,7 @@ function account(){
   <div id="signupFields"><label>Display name<input id="authName" maxlength="80" autocomplete="name"></label><label>Account type<select id="authRole"><option value="athlete">Athlete</option><option value="coach">Coach</option></select></label></div>
   <div class="sc auth-actions"><button id="signIn">Sign in</button><button id="signUp">Create account</button></div><p class="helper auth-message">${esc(cloudMessage)}</p></div>`;
   $("#signIn").onclick=async()=>{const{error}=await cloud.auth.signInWithPassword({email:$("#authEmail").value.trim(),password:$("#authPassword").value});cloudMessage=error?error.message:"";account()};
-  $("#signUp").onclick=async()=>{const{data,error}=await cloud.auth.signUp({email:$("#authEmail").value.trim(),password:$("#authPassword").value,options:{data:{role:$("#authRole").value,display_name:$("#authName").value.trim()}}});cloudMessage=error?error.message:data.session?"Account created.":"Check your email to confirm the account, then sign in.";account()};
+  $("#signUp").onclick=async()=>{const{data,error}=await cloud.auth.signUp({email:$("#authEmail").value.trim(),password:$("#authPassword").value,options:{emailRedirectTo:window.location.origin+window.location.pathname,data:{role:$("#authRole").value,display_name:$("#authName").value.trim()}}});cloudMessage=error?error.message:data.session?"Account created.":"Check your email to confirm the account, then sign in.";account()};
   return;
  }
  if(!cloudProfile){
