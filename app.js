@@ -6,18 +6,40 @@ try{const x=JSON.parse(localStorage.getItem("cfsc")||"{}");S={...S,...x,inp:{...
 const save=()=>{try{localStorage.setItem("cfsc",JSON.stringify(S))}catch(e){}};
 const esc=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const validDate=x=>typeof x=="string"&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&!Number.isNaN(Date.parse(x+"T00:00:00Z"))&&new Date(x+"T00:00:00Z").toISOString().slice(0,10)==x;
+function cleanPlan(x){
+ if(!x||typeof x!="object"||Array.isArray(x)||x.format!="skill-cycle-plan"||x.version!==1||!x.sessions||typeof x.sessions!="object"||Array.isArray(x.sessions))return null;
+ const sessions={};
+ for(const[id,s]of Object.entries(x.sessions)){
+  if(!/^(?:[1-9]|1[0-4])[FT]$/.test(id)||!s||typeof s!="object"||Array.isArray(s)||typeof s.focus!="string"||s.focus.length>300||typeof s.warm!="string"||s.warm.length>5000||typeof s.cool!="string"||s.cool.length>2000||!Array.isArray(s.bl)||s.bl.length<1||s.bl.length>4)return null;
+  const bl=[];
+  for(const b of s.bl){
+   if(!b||typeof b!="object"||Array.isArray(b)||typeof b.n!="string"||b.n.length>300||typeof b.dr!="string"||b.dr.length>5000||typeof b.m!="string"||b.m.length>5000||typeof b.ex!="string"||b.ex.length>5000)return null;
+   bl.push({n:b.n,dr:b.dr,m:b.m,ex:b.ex});
+  }
+  sessions[id]={focus:s.focus,warm:s.warm,cool:s.cool,bl};
+ }
+ return sessions;
+}
 const {build,ph,makeSessions,COOL}=window.SkillCycleProgram;
+let P={};
+try{const stored=localStorage.getItem("cfsc-plan");if(stored){const clean=cleanPlan(JSON.parse(stored));if(clean)P=clean}}catch(e){console.error("Could not load the saved training plan.",e)}
+const savePlan=()=>{try{localStorage.setItem("cfsc-plan",JSON.stringify({format:"skill-cycle-plan",version:1,sessions:P}))}catch(e){alert("Could not save this training plan in this browser.")}};
 let ses=makeSessions(S.startDate);
 const inputDate=x=>{const[y,m,d]=x.split("-");return`${m}/${d}/${y}`};
 const fmt=ms=>new Date(ms).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"});
 const td=()=>{const n=new Date();return n.getFullYear()+"-"+String(n.getMonth()+1).padStart(2,"0")+"-"+String(n.getDate()).padStart(2,"0")};
 function currentSession(){const i=ses.findIndex(s=>s.date>=td());return i<0?27:Math.max(0,i)}
 let cur=currentSession();
-let tab="t";
-const tabs=[["t","Today"],["c","Calendar"],["i","Inputs"],["r","Results"]];
+let tab="t",coachWeek=3,coachDay=0;
+const tabs=[["t","Today"],["c","Calendar"],["i","Inputs"],["r","Results"],["h","Coach"]];
 function nav(){$("#nv").innerHTML=tabs.map(([k,l])=>`<button class="${tab==k?"on":""}" data-k="${k}">${l}</button>`).join("");
  $("#nv").querySelectorAll("button").forEach(b=>b.onclick=()=>{tab=b.dataset.k;draw()});}
-function draw(){nav();$("#tmw").style.display=tab=="t"?"":"none";window.scrollTo(0,0);({t:today,c:cal,i:inputs,r:results})[tab]()}
+function draw(){nav();$("#tmw").style.display=tab=="t"?"":"none";window.scrollTo(0,0);({t:today,c:cal,i:inputs,r:results,h:coach})[tab]()}
+function workout(s){
+ const base=build(s.w,s.d,S.inp),override=P[s.id];
+ if(!override)return{...base,cool:COOL};
+ return{...base,...override};
+}
 function testSlot(s){if(s.w>=3&&s.w<=12)return null;return["du","bmu","hsw","rope"][(s.w<3?s.w-1:s.w-13)*2+s.d]}
 function testKey(slot,period,field){return`${period}-${slot}-${field}`}
 function testInput(label,slot,period,field,type="text",hint=""){
@@ -51,13 +73,13 @@ function bindTestEntry(s){
  });
 }
 function today(){
- const s=ses[cur],x=build(s.w,s.d,S.inp),dn=S.done[s.id];
- $("#v").innerHTML=`<div class="session-heading"><div><div class="section-kicker">${ph(s.w)}</div><h1>${fmt(s.ms)} <span>· Week ${s.w}</span></h1><p>${x.focus}</p></div><div class="session-nav"><button id="pv" aria-label="Previous session" ${cur?"":"disabled"}>←</button><button id="nx" aria-label="Next session" ${cur<27?"":"disabled"}>→</button></div></div>
+ const s=ses[cur],x=workout(s),dn=S.done[s.id];
+ $("#v").innerHTML=`<div class="session-heading"><div><div class="section-kicker">${ph(s.w)}</div><h1>${fmt(s.ms)} <span>· Week ${s.w}</span></h1><p>${esc(x.focus)}</p></div><div class="session-nav"><button id="pv" aria-label="Previous session" ${cur?"":"disabled"}>←</button><button id="nx" aria-label="Next session" ${cur<27?"":"disabled"}>→</button></div></div>
  ${dn?'<div class="status-banner">✓ Session complete</div>':""}
- <div class="card"><div class="lb" style="margin-top:0">Warm-up · 8 min</div><div class="tx">${x.warm}</div></div>
- ${x.bl.map(k=>`<div class="card"><div class="blk">${k.n}</div><div class="lb">Drills</div><div class="tx">${k.dr}</div><div class="lb">Main set</div><div class="tx main ${k.m[0]=="⚠"?"wn":""}">${k.m}</div><div class="lb">Strength / record</div><div class="tx">${k.ex}</div></div>`).join("")}
+ <div class="card"><div class="lb" style="margin-top:0">Warm-up · 8 min</div><div class="tx">${esc(x.warm)}</div></div>
+ ${x.bl.map(k=>`<div class="card"><div class="blk">${esc(k.n)}</div><div class="lb">Drills</div><div class="tx">${esc(k.dr)}</div><div class="lb">Main set</div><div class="tx main ${k.m[0]=="⚠"?"wn":""}">${esc(k.m)}</div><div class="lb">Strength / record</div><div class="tx">${esc(k.ex)}</div></div>`).join("")}
  ${testEntry(s)}
- <div class="card"><div class="lb" style="margin-top:0">Cooldown</div><div class="tx">${COOL}</div></div>
+ <div class="card"><div class="lb" style="margin-top:0">Cooldown</div><div class="tx">${esc(x.cool)}</div></div>
  <div class="card"><div class="lb" style="margin-top:0">Your result / notes</div><textarea id="nt" placeholder="Reps, times, band used, how it felt…"></textarea></div>
  <button class="p" id="dn">${dn?"Mark as not done":"Mark session done ✔"}</button>`;
  bindTestEntry(s);
@@ -66,8 +88,42 @@ function today(){
  $("#pv").onclick=()=>{cur--;today();window.scrollTo(0,0)};$("#nx").onclick=()=>{cur++;today();window.scrollTo(0,0)};}
 function cal(){let h="<h1>Calendar</h1>",lw=0;
  ses.forEach((s,i)=>{if(s.w!=lw){lw=s.w;h+=`<div class="wk">Week ${s.w} · ${ph(s.w)}</div>`}
-  h+=`<div class="li ${i==cur?"cur":""} ${S.done[s.id]?"d":""}" data-i="${i}"><span><b>${fmt(s.ms)}</b> · ${build(s.w,s.d,S.inp).focus}</span><span>${S.done[s.id]?"✔":""}</span></div>`});
+  h+=`<div class="li ${i==cur?"cur":""} ${S.done[s.id]?"d":""}" data-i="${i}"><span><b>${fmt(s.ms)}</b> · ${esc(workout(s).focus)}</span><span>${S.done[s.id]?"✔":""}</span></div>`});
  $("#v").innerHTML=h;document.querySelectorAll(".li").forEach(e=>e.onclick=()=>{cur=+e.dataset.i;tab="t";draw()})}
+function coach(){
+ const id=coachWeek+(coachDay?"T":"F"),x=workout({w:coachWeek,d:coachDay,id});
+ const area=(key,label,value)=>`<label>${label}<textarea data-coach="${key}">${esc(value)}</textarea></label>`;
+ $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Local coach mode</div><h1>Training plan editor</h1><p>Edit any session, then export a plan file for the athlete to import here. Plan files do not include athlete progress. This editor is stored in this browser and is not protected by an account.</p></div>
+ <div class="card"><label>Week<select id="coachWeek">${Array.from({length:14},(_,i)=>i+1).map(w=>`<option value="${w}" ${w==coachWeek?"selected":""}>Week ${w}</option>`).join("")}</select></label>
+ <label>Session<select id="coachDay"><option value="0" ${coachDay==0?"selected":""}>Session 1 · Double unders + BMU</option><option value="1" ${coachDay==1?"selected":""}>Session 2 · Handstand walk + rope</option></select></label>
+ ${area("focus","Session focus",x.focus)}${area("warm","Warm-up",x.warm)}${x.bl.map((b,i)=>`<section class="coach-block"><h2>Training block ${i+1}</h2>${area(`bl.${i}.n`,"Block title",b.n)}${area(`bl.${i}.dr`,"Drills",b.dr)}${area(`bl.${i}.m`,"Main set",b.m)}${area(`bl.${i}.ex`,"Strength / record",b.ex)}<button type="button" class="coach-remove" data-remove="${i}" ${x.bl.length<=1?"disabled":""}>Remove block</button></section>`).join("")}
+ <button type="button" id="coachAdd" ${x.bl.length>=4?"disabled":""}>Add training block</button>
+ ${area("cool","Cooldown",x.cool)}
+ <div class="sc coach-actions"><button id="planExport">Export plan</button><button id="planImport">Import plan</button></div>
+ <input id="planFile" type="file" accept=".json,application/json" hidden>
+ <button id="planReset" class="coach-reset">Reset this session to the default plan</button></div>`;
+ $("#coachWeek").onchange=e=>{coachWeek=+e.target.value;coach()};
+ $("#coachDay").onchange=e=>{coachDay=+e.target.value;coach()};
+ document.querySelectorAll("[data-coach]").forEach(el=>el.oninput=()=>{
+  const plan=P[id]||{focus:x.focus,warm:x.warm,cool:x.cool,bl:x.bl.map(b=>({...b}))};
+  const[key,...rest]=el.dataset.coach.split(".");
+  if(key=="bl")plan.bl[+rest[0]][rest[1]]=el.value;else plan[key]=el.value;
+  P[id]=plan;savePlan();
+ });
+ $("#coachAdd").onclick=()=>{if(x.bl.length>=4)return;const plan=P[id]||{focus:x.focus,warm:x.warm,cool:x.cool,bl:x.bl.map(b=>({...b}))};plan.bl.push({n:"New training block",dr:"",m:"",ex:""});P[id]=plan;savePlan();coach()};
+ document.querySelectorAll("[data-remove]").forEach(el=>el.onclick=()=>{
+  if(x.bl.length<=1)return;const plan=P[id]||{focus:x.focus,warm:x.warm,cool:x.cool,bl:x.bl.map(b=>({...b}))};plan.bl.splice(+el.dataset.remove,1);P[id]=plan;savePlan();coach()
+ });
+ $("#planReset").onclick=()=>{if(!P[id])return;if(confirm("Reset this session's edits to the default training plan?")){delete P[id];savePlan();coach()}};
+ $("#planExport").onclick=()=>{const blob=new Blob([JSON.stringify({format:"skill-cycle-plan",version:1,sessions:P},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="skill-cycle-training-plan.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+ $("#planImport").onclick=()=>$("#planFile").click();
+ $("#planFile").onchange=async e=>{
+  const file=e.target.files[0];if(!file)return;
+  try{const imported=cleanPlan(JSON.parse(await file.text()));if(!imported)throw Error("Invalid plan format");if(!confirm("Importing replaces the training plan currently stored in this browser. Athlete progress is not changed."))return;P=imported;savePlan();coach()}
+  catch(e){alert("That file isn't a valid Skill Cycle training plan.")}
+  finally{e.target.value=""}
+ };
+}
 function inputs(){const I=S.inp,f=(k,l,h,t="number")=>`<label>${l}<small>${h}</small><input data-k="${k}" type="${t}" inputmode="decimal" value="${esc(I[k])}"></label>`;
  $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Athlete profile</div><h1>Inputs</h1><p>Test-day entries automatically update these targets and skill tracks.</p></div><div class="card">Choose the skill tracks that best match your current, repeatable ability. Sessions emphasize deliberate practice, full resets, and clean reps—not fatigue or max-rep sets.
  ${f("M","Double unders · M","Largest unbroken set in the Flight Simulator; updates DU targets")}
