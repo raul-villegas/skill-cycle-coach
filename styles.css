@@ -31,7 +31,7 @@ button.dn{background:transparent;color:var(--ac);border-color:var(--ac)}
 textarea{width:100%;min-height:88px;resize:vertical}
 label{display:block;font-weight:650;margin-top:13px}small{color:var(--mu);display:block;font-weight:400;font-size:12px;line-height:1.45;margin-top:3px}
 input,select{width:100%;margin-top:5px}input[type=number]{font-variant-numeric:tabular-nums}
-input[type=date]{min-width:0;max-width:100%}
+input[type=date]{width:100%;min-width:0;max-width:100%;padding-inline:8px;font-size:14px}
 .date-input-wrap{display:grid;grid-template-columns:minmax(0,1fr);min-width:0}
 .test-entry{border-color:color-mix(in srgb,var(--ac),var(--ln) 60%);background:linear-gradient(150deg,var(--card),var(--soft))}
 .test-entry h2{margin-bottom:4px}.test-entry .helper{max-width:55ch}
