@@ -61,9 +61,9 @@ function currentSession(){const i=ses.findIndex(s=>s.date>=td());return i<0?27:M
 let cur=currentSession();
 let tab="t",coachWeek=3,coachDay=0;
 const tabs=[["t","Today"],["c","Calendar"],["i","Inputs"],["r","Results"],["h","Coach"],["a","Account"]];
-function nav(){$("#nv").innerHTML=tabs.map(([k,l])=>`<button class="${tab==k?"on":""}" data-k="${k}">${l}</button>`).join("");
+function nav(){const visibleTabs=cloudUser&&cloudProfile?.role=="athlete"?tabs.filter(([k])=>k!="h"):tabs;$("#nv").innerHTML=visibleTabs.map(([k,l])=>`<button class="${tab==k?"on":""}" data-k="${k}">${l}</button>`).join("");
  $("#nv").querySelectorAll("button").forEach(b=>b.onclick=()=>{tab=b.dataset.k;draw()});}
-function draw(){nav();$("#tmw").style.display=tab=="t"?"":"none";window.scrollTo(0,0);({t:today,c:cal,i:inputs,r:results,h:coach,a:account})[tab]()}
+function draw(){if(cloudUser&&cloudProfile?.role=="athlete"&&tab=="h")tab="t";nav();$("#tmw").style.display=tab=="t"?"":"none";window.scrollTo(0,0);({t:today,c:cal,i:inputs,r:results,h:coach,a:account})[tab]()}
 function workout(s){
  const base=build(s.w,s.d,S.inp),override=P[s.id];
  if(!override)return{...base,cool:COOL};
