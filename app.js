@@ -8,6 +8,7 @@ const esc=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"
 const validDate=x=>typeof x=="string"&&/^\d{4}-\d{2}-\d{2}$/.test(x)&&!Number.isNaN(Date.parse(x+"T00:00:00Z"))&&new Date(x+"T00:00:00Z").toISOString().slice(0,10)==x;
 const {build,ph,makeSessions,COOL}=window.SkillCycleProgram;
 let ses=makeSessions(S.startDate);
+const inputDate=x=>{const[y,m,d]=x.split("-");return`${m}/${d}/${y}`};
 const fmt=ms=>new Date(ms).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"});
 const td=()=>{const n=new Date();return n.getFullYear()+"-"+String(n.getMonth()+1).padStart(2,"0")+"-"+String(n.getDate()).padStart(2,"0")};
 function currentSession(){const i=ses.findIndex(s=>s.date>=td());return i<0?27:Math.max(0,i)}
@@ -75,7 +76,7 @@ function inputs(){const I=S.inp,f=(k,l,h,t="number")=>`<label>${l}<small>${h}</s
  ${f("rope","Rope test · total seconds","Time for 10 climbs, in seconds (e.g. 420)")}</div>
  <div class="card"><div class="section-kicker">Captured on test days</div><h2>Recorded results</h2><div class="test-summary">${[["du","Double unders"],["bmu","BMU / pull-ups"],["hsw","Handstand walk"],["rope","Rope climbs"]].map(([slot,label])=>`<div class="test-summary-row"><b>${label}</b><span><small>Baseline</small>${esc(resultText(slot,"baseline"))}</span><span><small>Retest</small>${esc(resultText(slot,"retest"))}</span></div>`).join("")}</div></div>
  <div class="card"><div class="section-kicker">Plan setup</div><h2>Schedule &amp; progress</h2><p class="helper">Choose the first training date. Progress saves in this browser when supported. Export a JSON file for a durable backup or to move progress to another phone.</p>
- <label>First session date<div class="date-input-wrap"><input id="startDate" type="date" value="${esc(validDate(S.startDate)?S.startDate:defaultStart)}"></div></label>
+ <label>First session date<div class="date-input-wrap"><span aria-hidden="true">${inputDate(validDate(S.startDate)?S.startDate:defaultStart)}</span><input id="startDate" type="date" aria-label="First session date" value="${esc(validDate(S.startDate)?S.startDate:defaultStart)}"></div></label>
  <div class="sc" style="margin-top:10px"><button id="ex">Export progress</button><button id="im">Import progress</button></div>
  <input id="progressFile" type="file" accept=".json,application/json" hidden>
  <button id="pr" style="width:100%;margin-top:8px">Print this page</button>
