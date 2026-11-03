@@ -3,13 +3,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Skill Cycle · DU · BMU · HSW · Rope</title>
 <link rel="stylesheet" href="styles.css"></head><body>
-<header class="site-header"><div class="brand-mark">SC</div><div><strong>Skill Cycle</strong><small>Skill · strength · consistency</small></div></header>
+<header class="site-header"><div class="brand"><div class="brand-mark">SC</div><div><strong>Skill Cycle</strong><small>Skill · strength · consistency</small></div></div><button id="menuToggle" class="menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="nv" aria-expanded="false"><span></span><span></span><span></span></button><nav id="nv" aria-label="Main navigation" aria-hidden="true"></nav></header>
 <main id="v"></main>
 <main id="tmw" style="padding-top:0"><details class="card" id="tm"><summary><b>EMOM / interval timer</b></summary>
 <label>Minutes<input id="tmin" type="number" value="10" min="1" max="30" inputmode="numeric"></label>
 <div id="tc">00:00</div><div id="tl" class="lb" style="text-align:center">Ready</div>
 <div class="sc" style="margin-top:8px"><button class="p" id="tgo">Start</button><button id="trs">Reset</button></div></details></main>
-<nav id="nv"></nav>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
 <script src="programming.js"></script>

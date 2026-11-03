@@ -61,8 +61,20 @@ function currentSession(){const i=ses.findIndex(s=>s.date>=td());return i<0?27:M
 let cur=currentSession();
 let tab="t",coachWeek=3,coachDay=0;
 const tabs=[["t","Today"],["c","Calendar"],["i","Inputs"],["r","Results"],["h","Coach"],["a","Account"]];
-function nav(){const visibleTabs=cloudUser&&cloudProfile?.role=="athlete"?tabs.filter(([k])=>k!="h"):tabs;$("#nv").innerHTML=visibleTabs.map(([k,l])=>`<button class="${tab==k?"on":""}" data-k="${k}">${l}</button>`).join("");
- $("#nv").querySelectorAll("button").forEach(b=>b.onclick=()=>{tab=b.dataset.k;draw()});}
+let menuOpen=false;
+function nav(){
+ const links=tabs.filter(([key])=>key!="h"||!(cloudUser&&cloudProfile?.role=="athlete"));
+ $("#nv").innerHTML=links.map(([key,label])=>`<button class="menu-link ${tab==key?"on":""}" data-k="${key}" ${tab==key?'aria-current="page"':""}>${label}${tab==key?'<span aria-hidden="true">✓</span>':""}</button>`).join("");
+ $("#nv").classList.toggle("open",menuOpen);
+ $("#nv").setAttribute("aria-hidden",String(!menuOpen));
+ $("#menuToggle").setAttribute("aria-expanded",String(menuOpen));
+ $("#menuToggle").setAttribute("aria-label",menuOpen?"Close navigation menu":"Open navigation menu");
+ $("#menuToggle").classList.toggle("open",menuOpen);
+ $("#nv").querySelectorAll("[data-k]").forEach(button=>button.onclick=()=>{tab=button.dataset.k;menuOpen=false;draw()});
+}
+$("#menuToggle").onclick=()=>{menuOpen=!menuOpen;nav()};
+document.addEventListener("click",event=>{if(menuOpen&&!$("#nv").contains(event.target)&&!$("#menuToggle").contains(event.target)){menuOpen=false;nav()}});
+document.addEventListener("keydown",event=>{if(event.key=="Escape"&&menuOpen){menuOpen=false;nav();$("#menuToggle").focus()}});
 function draw(){if(cloudUser&&cloudProfile?.role=="athlete"&&tab=="h")tab="t";nav();$("#tmw").style.display=tab=="t"?"":"none";window.scrollTo(0,0);({t:today,c:cal,i:inputs,r:results,h:coach,a:account})[tab]()}
 function workout(s){
  const base=build(s.w,s.d,S.inp),override=P[s.id];
