@@ -23,7 +23,36 @@ function cleanPlan(x){
 const {build,ph,makeSessions,COOL}=window.SkillCycleProgram;
 let P={};
 try{const stored=localStorage.getItem("cfsc-plan");if(stored){const clean=cleanPlan(JSON.parse(stored));if(clean)P=clean}}catch(e){console.error("Could not load the saved training plan.",e)}
-const savePlan=()=>{try{localStorage.setItem("cfsc-plan",JSON.stringify({format:"skill-cycle-plan",version:1,sessions:P}))}catch(e){alert("Could not save this training plan in this browser.")}};
+let localPlan=P;
+const cloudConfig=window.SkillCycleSupabaseConfig||{};
+let cloud=null;
+try{if(cloudConfig.url&&cloudConfig.anonKey&&window.supabase?.createClient)cloud=window.supabase.createClient(cloudConfig.url,cloudConfig.anonKey)}catch(e){console.error("Supabase configuration is invalid.",e)}
+let cloudUser=null,cloudProfile=null,cloudMessage="",linkCode="",athleteRows=[],activeAthleteId=null,remotePlanMode=false,liveChannel=null,relationshipChannel=null,remoteSaveTimer=0;
+const savePlanLocal=()=>{if(remotePlanMode)return;localPlan=P;try{localStorage.setItem("cfsc-plan",JSON.stringify({format:"skill-cycle-plan",version:1,sessions:P}))}catch(e){console.error("Could not save the training plan locally.",e)}};
+async function syncRemotePlan(athleteId,userId,sessions){
+ try{
+  const{error}=await cloud.from("training_plans").upsert({athlete_id:athleteId,sessions,updated_by:userId},{onConflict:"athlete_id"});
+  cloudMessage=error?`Plan sync failed: ${error.message}`:"Plan synced";
+  if(error)console.error("Could not sync the training plan.",error);
+ }catch(error){cloudMessage="Could not sync the training plan.";console.error(cloudMessage,error)}
+ if(cloudUser?.id==userId&&activeAthleteId==athleteId){const status=$("#planSyncStatus");if(status)status.textContent=cloudMessage}
+}
+const savePlan=()=>{
+ savePlanLocal();
+ if(!cloud||!cloudUser||!remotePlanMode||!activeAthleteId)return;
+ clearTimeout(remoteSaveTimer);
+ const athleteId=activeAthleteId,userId=cloudUser.id,sessions=JSON.parse(JSON.stringify(P));
+ remoteSaveTimer=setTimeout(async()=>{
+  remoteSaveTimer=0;
+  if(!cloudUser||cloudUser.id!=userId||activeAthleteId!=athleteId||!remotePlanMode)return;
+  await syncRemotePlan(athleteId,userId,sessions);
+ },500);
+};
+async function flushRemotePlan(){
+ if(!remoteSaveTimer||!cloudUser||!activeAthleteId||!remotePlanMode)return;
+ clearTimeout(remoteSaveTimer);remoteSaveTimer=0;
+ await syncRemotePlan(activeAthleteId,cloudUser.id,JSON.parse(JSON.stringify(P)));
+}
 let ses=makeSessions(S.startDate);
 const inputDate=x=>{const[y,m,d]=x.split("-");return`${m}/${d}/${y}`};
 const fmt=ms=>new Date(ms).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"});
@@ -31,14 +60,115 @@ const td=()=>{const n=new Date();return n.getFullYear()+"-"+String(n.getMonth()+
 function currentSession(){const i=ses.findIndex(s=>s.date>=td());return i<0?27:Math.max(0,i)}
 let cur=currentSession();
 let tab="t",coachWeek=3,coachDay=0;
-const tabs=[["t","Today"],["c","Calendar"],["i","Inputs"],["r","Results"],["h","Coach"]];
+const tabs=[["t","Today"],["c","Calendar"],["i","Inputs"],["r","Results"],["h","Coach"],["a","Account"]];
 function nav(){$("#nv").innerHTML=tabs.map(([k,l])=>`<button class="${tab==k?"on":""}" data-k="${k}">${l}</button>`).join("");
  $("#nv").querySelectorAll("button").forEach(b=>b.onclick=()=>{tab=b.dataset.k;draw()});}
-function draw(){nav();$("#tmw").style.display=tab=="t"?"":"none";window.scrollTo(0,0);({t:today,c:cal,i:inputs,r:results,h:coach})[tab]()}
+function draw(){nav();$("#tmw").style.display=tab=="t"?"":"none";window.scrollTo(0,0);({t:today,c:cal,i:inputs,r:results,h:coach,a:account})[tab]()}
 function workout(s){
  const base=build(s.w,s.d,S.inp),override=P[s.id];
  if(!override)return{...base,cool:COOL};
  return{...base,...override};
+}
+function stopPlanSubscription(){
+ clearTimeout(remoteSaveTimer);remoteSaveTimer=0;
+ if(liveChannel){cloud.removeChannel(liveChannel);liveChannel=null}
+}
+function stopRelationshipSubscription(){
+ if(relationshipChannel){cloud.removeChannel(relationshipChannel);relationshipChannel=null}
+}
+async function refreshCoachAthletes(){
+ if(!cloudUser||cloudProfile?.role!="coach")return;
+ const{data:links,error:linkError}=await cloud.from("coach_athletes").select("athlete_id").eq("coach_id",cloudUser.id);
+ if(linkError){cloudMessage=`Could not load linked athletes: ${linkError.message}`;if(tab=="a")account();return}
+ const ids=(links||[]).map(row=>row.athlete_id);
+ if(ids.length){
+  const{data:names,error:nameError}=await cloud.from("profiles").select("user_id,display_name").in("user_id",ids);
+  if(nameError){cloudMessage=`Could not load athlete names: ${nameError.message}`;if(tab=="a")account();return}
+  athleteRows=(names||[]).map(row=>({id:row.user_id,name:row.display_name||`Athlete ${row.user_id.slice(0,8)}`}));
+ }else athleteRows=[];
+ if(activeAthleteId&&!athleteRows.some(row=>row.id==activeAthleteId)){activeAthleteId=null;remotePlanMode=false;stopPlanSubscription()}
+ if(!activeAthleteId&&athleteRows.length==1)await loadRemotePlan(athleteRows[0].id);
+ if(tab=="a")account();else if(tab=="h")coach();
+}
+async function loadRemotePlan(athleteId){
+ await flushRemotePlan();
+ activeAthleteId=athleteId;remotePlanMode=true;stopPlanSubscription();
+ const{data,error}=await cloud.from("training_plans").select("sessions").eq("athlete_id",athleteId).maybeSingle();
+ if(error){cloudMessage=`Could not load shared plan: ${error.message}`;remotePlanMode=false;return}
+ P=data?.sessions&&cleanPlan({format:"skill-cycle-plan",version:1,sessions:data.sessions})||{};
+ liveChannel=cloud.channel(`training-plan-${athleteId}`).on("postgres_changes",{event:"*",schema:"public",table:"training_plans",filter:`athlete_id=eq.${athleteId}`},payload=>{
+  const previous=JSON.stringify(P);
+  if(payload.eventType=="DELETE")P={};
+  else{const shared=payload.new?.sessions;P=shared&&cleanPlan({format:"skill-cycle-plan",version:1,sessions:shared})||{}}
+  if(previous==JSON.stringify(P))return;
+  if(tab=="t"||tab=="c"||tab=="h")draw();
+ }).subscribe();
+ cloudMessage="Shared plan connected";
+}
+async function handleCloudSession(session){
+ const accountChanged=cloudUser?.id!=session?.user?.id;
+ if(cloudUser&&accountChanged)await flushRemotePlan();
+ if(cloudUser&&accountChanged)P=localPlan;
+ cloudUser=session?.user||null;cloudProfile=null;athleteRows=[];activeAthleteId=null;remotePlanMode=false;linkCode="";stopPlanSubscription();stopRelationshipSubscription();
+ if(!cloudUser){draw();return}
+ const{data:profile,error}=await cloud.from("profiles").select("role,display_name").eq("user_id",cloudUser.id).maybeSingle();
+ if(error||!profile){cloudMessage=error?`Could not load account: ${error.message}`:"Account profile is not ready yet. Confirm your email, then sign in again.";draw();return}
+ cloudProfile=profile;cloudMessage="";
+ if(profile.role=="coach"){
+  await refreshCoachAthletes();
+  relationshipChannel=cloud.channel(`coach-links-${cloudUser.id}`).on("postgres_changes",{event:"*",schema:"public",table:"coach_athletes",filter:`coach_id=eq.${cloudUser.id}`},()=>refreshCoachAthletes()).subscribe();
+ }else{
+  const{data:link,error:linkError}=await cloud.from("coach_athletes").select("coach_id").eq("athlete_id",cloudUser.id).maybeSingle();
+  if(linkError){cloudMessage=`Could not load coach link: ${linkError.message}`;draw();return}
+  if(link)await loadRemotePlan(cloudUser.id);
+ }
+ draw();
+}
+async function initializeCloud(){
+ if(!cloud)return;
+ const{data:{session},error}=await cloud.auth.getSession();
+ if(error){cloudMessage=`Authentication error: ${error.message}`;draw();return}
+ await handleCloudSession(session);
+ cloud.auth.onAuthStateChange((_event,nextSession)=>{if(nextSession?.user?.id==cloudUser?.id)return;setTimeout(()=>handleCloudSession(nextSession),0)});
+}
+function account(){
+ if(!cloud){
+  $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Account &amp; sync</div><h1>Accounts</h1><p>Sign-in and live syncing aren’t configured yet. Add the Supabase project URL and public anon key to <code>supabase-config.js</code>, then run <code>supabase-schema.sql</code> in the project’s SQL editor. Local coach edits and file export/import still work.</p></div>`;
+  return;
+ }
+ if(!cloudUser){
+  $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Account &amp; sync</div><h1>Sign in or create an account</h1><p>Coach accounts can create athlete link codes and edit shared plans. Athlete accounts can redeem a coach code and view the plan live.</p></div>
+  <div class="card"><label>Email<input id="authEmail" type="email" autocomplete="email" required></label><label>Password<input id="authPassword" type="password" autocomplete="current-password" minlength="8" required></label>
+  <div id="signupFields"><label>Display name<input id="authName" maxlength="80" autocomplete="name"></label><label>Account type<select id="authRole"><option value="athlete">Athlete</option><option value="coach">Coach</option></select></label></div>
+  <div class="sc auth-actions"><button id="signIn">Sign in</button><button id="signUp">Create account</button></div><p class="helper auth-message">${esc(cloudMessage)}</p></div>`;
+  $("#signIn").onclick=async()=>{const{error}=await cloud.auth.signInWithPassword({email:$("#authEmail").value.trim(),password:$("#authPassword").value});cloudMessage=error?error.message:"";account()};
+  $("#signUp").onclick=async()=>{const{data,error}=await cloud.auth.signUp({email:$("#authEmail").value.trim(),password:$("#authPassword").value,options:{data:{role:$("#authRole").value,display_name:$("#authName").value.trim()}}});cloudMessage=error?error.message:data.session?"Account created.":"Check your email to confirm the account, then sign in.";account()};
+  return;
+ }
+ if(!cloudProfile){
+  $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Account &amp; sync</div><h1>Account unavailable</h1><p>${esc(cloudMessage||"Your account profile could not be loaded.")}</p><button id="signOut">Sign out</button></div>`;
+  $("#signOut").onclick=()=>cloud.auth.signOut();
+  return;
+ }
+ const identity=cloudProfile.display_name||cloudUser.email;
+ let rolePanel="";
+ if(cloudProfile.role=="coach"){
+  rolePanel=`<div class="card"><h2>Link an athlete</h2><p class="helper">Create a one-time code. The athlete enters it from their account within 30 minutes.</p><button id="createLinkCode">Create athlete link code</button>${linkCode?`<p class="link-code">${esc(linkCode)}</p>`:""}
+  <h2 class="linked-heading">Linked athlete</h2>${athleteRows.length?`<label>Select athlete<select id="linkedAthlete"><option value="">Choose athlete</option>${athleteRows.map(row=>`<option value="${row.id}" ${row.id==activeAthleteId?"selected":""}>${esc(row.name)}</option>`).join("")}</select></label>`:"<p>No athletes linked yet.</p>"}</div>`;
+ }else{
+  const linked=remotePlanMode;
+  rolePanel=`<div class="card">${linked?`<p>Your coach is linked. Their plan updates live while you’re online.</p><button id="unlinkCoach">Unlink coach</button>`:`<h2>Connect to your coach</h2><p class="helper">Ask your coach for a one-time code, then enter it here. A code expires after 30 minutes.</p><label>Coach link code<input id="coachCode" autocomplete="off" maxlength="32"></label><button id="redeemCode">Connect coach</button>`}</div>`;
+ }
+ $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Account &amp; sync</div><h1>${esc(identity)}</h1><p>Signed in as ${cloudProfile.role}. Athlete training plans sync live; workout progress remains on this device.</p></div>${rolePanel}<div class="card"><p class="helper">${esc(cloudMessage)}</p><button id="signOut">Sign out</button></div>`;
+ $("#signOut").onclick=async()=>{await flushRemotePlan();const{error}=await cloud.auth.signOut();if(error){cloudMessage=error.message;account()}};
+ if(cloudProfile.role=="coach"){
+  $("#createLinkCode").onclick=async()=>{const{data,error}=await cloud.rpc("create_coach_link_code");if(error)cloudMessage=error.message;else{linkCode=data;cloudMessage="Share this code with one athlete. It can only be used once."}account()};
+  if($("#linkedAthlete"))  $("#linkedAthlete").onchange=async e=>{if(!e.target.value){await flushRemotePlan();activeAthleteId=null;remotePlanMode=false;stopPlanSubscription();coach();return}await loadRemotePlan(e.target.value);coach()};
+ }else if(remotePlanMode){
+  $("#unlinkCoach").onclick=async()=>{const{error}=await cloud.from("coach_athletes").delete().eq("athlete_id",cloudUser.id);if(error)cloudMessage=error.message;else{remotePlanMode=false;activeAthleteId=null;stopPlanSubscription();cloudMessage="Coach unlinked."}account()};
+ }else{
+  $("#redeemCode").onclick=async()=>{const{error}=await cloud.rpc("redeem_coach_link_code",{p_code:$("#coachCode").value.trim()});if(error){cloudMessage=error.message;account();return}await handleCloudSession({user:cloudUser})};
+ }
 }
 function testSlot(s){if(s.w>=3&&s.w<=12)return null;return["du","bmu","hsw","rope"][(s.w<3?s.w-1:s.w-13)*2+s.d]}
 function testKey(slot,period,field){return`${period}-${slot}-${field}`}
@@ -92,18 +222,33 @@ function cal(){let h="<h1>Calendar</h1>",lw=0;
  $("#v").innerHTML=h;document.querySelectorAll(".li").forEach(e=>e.onclick=()=>{cur=+e.dataset.i;tab="t";draw()})}
 function coach(){
  const id=coachWeek+(coachDay?"T":"F"),x=workout({w:coachWeek,d:coachDay,id});
- const area=(key,label,value)=>`<label>${label}<textarea data-coach="${key}">${esc(value)}</textarea></label>`;
- $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Local coach mode</div><h1>Training plan editor</h1><p>Edit any session, then export a plan file for the athlete to import here. Plan files do not include athlete progress. This editor is stored in this browser and is not protected by an account.</p></div>
+ if(cloudUser&&cloudProfile?.role=="athlete"){
+  $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Coach</div><h1>Shared training plan</h1><p>Your coach can edit this plan. Changes appear here live when you’re online. Use the Account tab to connect or manage your coach link.</p></div>`;
+  return;
+ }
+ if(cloudUser&&cloudProfile?.role=="coach"&&!activeAthleteId){
+  $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Coach</div><h1>Choose an athlete</h1><p>Create a link code or select a linked athlete in the Account tab before editing their plan.</p></div>`;
+  return;
+ }
+ if(cloudUser&&cloudProfile?.role=="coach"&&!remotePlanMode){
+  $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">Coach</div><h1>Plan unavailable</h1><p>${esc(cloudMessage||"Select a linked athlete to load their shared plan.")}</p></div>`;
+  return;
+ }
+ const area=(key,label,value)=>{const max=key=="focus"||key.endsWith(".n")?300:key=="cool"?2000:5000;return`<label>${label}<textarea data-coach="${key}" maxlength="${max}">${esc(value)}</textarea></label>`};
+ const intro=cloudUser?`Editing the shared plan for ${esc(athleteRows.find(row=>row.id==activeAthleteId)?.name||"the selected athlete")}. Updates sync live; athlete progress stays private.`:"Edit any session, then export a plan file for the athlete to import here. Plan files do not include athlete progress. This editor is stored in this browser and is not protected by an account.";
+ $("#v").innerHTML=`<div class="page-heading"><div class="section-kicker">${cloudUser?"Coach account":"Local coach mode"}</div><h1>Training plan editor</h1><p>${intro}</p>${cloudMessage?`<p class="helper">${esc(cloudMessage)}</p>`:""}</div>
+ ${cloudUser&&athleteRows.length>1?`<div class="card"><label>Editing athlete<select id="coachAthlete">${athleteRows.map(row=>`<option value="${row.id}" ${row.id==activeAthleteId?"selected":""}>${esc(row.name)}</option>`).join("")}</select></label></div>`:""}
  <div class="card"><label>Week<select id="coachWeek">${Array.from({length:14},(_,i)=>i+1).map(w=>`<option value="${w}" ${w==coachWeek?"selected":""}>Week ${w}</option>`).join("")}</select></label>
  <label>Session<select id="coachDay"><option value="0" ${coachDay==0?"selected":""}>Session 1 · Double unders + BMU</option><option value="1" ${coachDay==1?"selected":""}>Session 2 · Handstand walk + rope</option></select></label>
  ${area("focus","Session focus",x.focus)}${area("warm","Warm-up",x.warm)}${x.bl.map((b,i)=>`<section class="coach-block"><h2>Training block ${i+1}</h2>${area(`bl.${i}.n`,"Block title",b.n)}${area(`bl.${i}.dr`,"Drills",b.dr)}${area(`bl.${i}.m`,"Main set",b.m)}${area(`bl.${i}.ex`,"Strength / record",b.ex)}<button type="button" class="coach-remove" data-remove="${i}" ${x.bl.length<=1?"disabled":""}>Remove block</button></section>`).join("")}
  <button type="button" id="coachAdd" ${x.bl.length>=4?"disabled":""}>Add training block</button>
  ${area("cool","Cooldown",x.cool)}
- <div class="sc coach-actions"><button id="planExport">Export plan</button><button id="planImport">Import plan</button></div>
+ ${cloudUser?`<p id="planSyncStatus" class="helper">${esc(cloudMessage||"Edits save automatically and sync live.")}</p>`:`<div class="sc coach-actions"><button id="planExport">Export plan</button><button id="planImport">Import plan</button></div>`}
  <input id="planFile" type="file" accept=".json,application/json" hidden>
  <button id="planReset" class="coach-reset">Reset this session to the default plan</button></div>`;
  $("#coachWeek").onchange=e=>{coachWeek=+e.target.value;coach()};
  $("#coachDay").onchange=e=>{coachDay=+e.target.value;coach()};
+ if($("#coachAthlete"))$("#coachAthlete").onchange=async e=>{await loadRemotePlan(e.target.value);coach()};
  document.querySelectorAll("[data-coach]").forEach(el=>el.oninput=()=>{
   const plan=P[id]||{focus:x.focus,warm:x.warm,cool:x.cool,bl:x.bl.map(b=>({...b}))};
   const[key,...rest]=el.dataset.coach.split(".");
@@ -115,8 +260,8 @@ function coach(){
   if(x.bl.length<=1)return;const plan=P[id]||{focus:x.focus,warm:x.warm,cool:x.cool,bl:x.bl.map(b=>({...b}))};plan.bl.splice(+el.dataset.remove,1);P[id]=plan;savePlan();coach()
  });
  $("#planReset").onclick=()=>{if(!P[id])return;if(confirm("Reset this session's edits to the default training plan?")){delete P[id];savePlan();coach()}};
- $("#planExport").onclick=()=>{const blob=new Blob([JSON.stringify({format:"skill-cycle-plan",version:1,sessions:P},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="skill-cycle-training-plan.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
- $("#planImport").onclick=()=>$("#planFile").click();
+ if($("#planExport"))$("#planExport").onclick=()=>{const blob=new Blob([JSON.stringify({format:"skill-cycle-plan",version:1,sessions:P},null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="skill-cycle-training-plan.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+ if($("#planImport"))$("#planImport").onclick=()=>$("#planFile").click();
  $("#planFile").onchange=async e=>{
   const file=e.target.files[0];if(!file)return;
   try{const imported=cleanPlan(JSON.parse(await file.text()));if(!imported)throw Error("Invalid plan format");if(!confirm("Importing replaces the training plan currently stored in this browser. Athlete progress is not changed."))return;P=imported;savePlan();coach()}
@@ -166,3 +311,4 @@ function stop(){clearInterval(T.id);T.id=0;$("#tgo").textContent="Start"}
 $("#tgo").onclick=()=>{if(T.id){stop()}else{if(!T.s)beep();T.id=setInterval(tick,1000);$("#tgo").textContent="Pause";paint()}};
 $("#trs").onclick=()=>{stop();T.s=0;$("#tc").textContent="00:00";$("#tl").textContent="Ready"};
 draw();
+initializeCloud().catch(error=>{console.error("Could not initialize Supabase.",error);cloudMessage="Could not connect to Supabase.";if(tab=="a")account()});

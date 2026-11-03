@@ -38,6 +38,9 @@ input,select{width:100%;margin-top:5px}input[type=number]{font-variant-numeric:t
 .coach-block textarea{min-height:82px}
 .coach-actions{margin-top:12px}
 .coach-reset{width:100%;margin-top:10px}
+.auth-actions{margin-top:12px}
+.link-code{padding:12px;border:1px dashed var(--ac);border-radius:12px;font:700 18px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}
+.linked-heading{margin-top:20px}
 .test-entry{border-color:color-mix(in srgb,var(--ac),var(--ln) 60%);background:linear-gradient(150deg,var(--card),var(--soft))}
 .test-entry h2{margin-bottom:4px}.test-entry .helper{max-width:55ch}
 .result-card h2{margin-bottom:2px}.result-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
@@ -57,4 +60,5 @@ nav button.on{color:var(--ac);background:var(--soft)}
 button,select,input,textarea{min-height:46px}
 summary{cursor:pointer}
 @media(max-width:420px){main{padding:10px 13px}.site-header{padding:16px 13px 6px}.card{padding:15px;border-radius:16px}.session-heading{align-items:flex-start}.session-nav{padding-top:2px}.result-grid{grid-template-columns:1fr}.test-summary-row{grid-template-columns:1fr 1fr}.test-summary-row>b{grid-column:1/-1}}
+@media(max-width:380px){nav button{font-size:11px;padding-inline:2px}}
 @media print{body{padding:0;background:#fff;color:#111}.site-header,#tmw,nav,button{display:none!important}main{max-width:none;padding:0}.card,.li{break-inside:avoid;background:#fff;color:#111;border-color:#bbb;box-shadow:none}.blk{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
